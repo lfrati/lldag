@@ -41,22 +41,22 @@ dummy(xs, ws)
 # _cache_hits
 # _cache_misses
 
-# # dummy.get_annotation_info()
-# # dummy.inspect_llvm().keys()
+# dummy.get_annotation_info()
+# dummy.inspect_llvm().keys()
 # for v in dummy.inspect_cfg().values():
-#     # for v in dummy.inspect_llvm().values():
-#     # for v in dummy.inspect_asm().values():
-#     print(v, type(v))
+for v in dummy.inspect_llvm().values():
+    # for v in dummy.inspect_asm().values():
+    print(v)
 
 #%%
 
-# from time import monotonic
-import os
-
-def get_opt(opt,default=0):
-    try:
-        value = int(os.environ[opt])
-    except KeyError:
-        value = default
-    print(f"{value=}")
-    return value
+# # from time import monotonic
+# import os
+#
+# def get_opt(opt,default=0):
+#     try:
+#         value = int(os.environ[opt])
+#     except KeyError:
+#         value = default
+#     print(f"{value=}")
+#     return value
