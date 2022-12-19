@@ -8,7 +8,8 @@ def dummy(inputs, weights):
     s += inputs[0] * weights[0]
     s += inputs[1] * weights[1]
     s += inputs[2] * weights[2]
-    v = max(0, s)
+    # v = max(0, s)
+    v = np.sin(s)
     return v
 
 
@@ -47,16 +48,3 @@ dummy(xs, ws)
 for v in dummy.inspect_llvm().values():
     # for v in dummy.inspect_asm().values():
     print(v)
-
-#%%
-
-# # from time import monotonic
-# import os
-#
-# def get_opt(opt,default=0):
-#     try:
-#         value = int(os.environ[opt])
-#     except KeyError:
-#         value = default
-#     print(f"{value=}")
-#     return value
