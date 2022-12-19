@@ -1,15 +1,17 @@
-import math
+from ctypes import POINTER, c_float
 
-# import numpy as np
-# from random import random
-from rich import print
+from llvmlite import ir
+import numpy as np
+from rich import print as pprint
+
 from llvm import LLVM
 
 VALS = -1  # Values counter
 ACTS = -1  # Values counter
 NEUS = -1  # Neurons counter
+CONSTANTS = {}
 
-CODE = []
+c_float_p = POINTER(c_float)
 
 
 class Op:
@@ -22,20 +24,11 @@ class ReLU(Op):
         global ACTS
         ACTS += 1
         label = f"a{ACTS}"
-        CODE.append(f"# [red]{self.__repr__()}")
-        CODE.append(
-            f"   cmp = builder.fcmp_ordered('<=', ir.Constant(ir.FloatType(), 0), {pre}, flags=('fast',))"
+        cmp = builder.fcmp_ordered(
+            "<=", ir.Constant(ir.FloatType(), 0), pre.label, flags=("fast",)
         )
-        CODE.append(
-            f"   {label} = builder.select(cmp, x, ir.Constant(ir.FloatType(), 0))"
-        )
-        CODE.append("# [red]---")
-        return Value(label)
-
-
-class Sin(Op):
-    def __call__(self, x):
-        return math.sin(x.data)
+        label = builder.select(cmp, pre.label, ir.Constant(ir.FloatType(), 0))
+        return label
 
 
 class Nop(Op):
@@ -57,14 +50,14 @@ class Value:
         global VALS
         VALS += 1
         label = f"v{VALS}"
-        CODE.append(f"   {label} = builder.fmul({self.label},{other.label})")
+        label = builder.fmul(self.label, other.label)
         return Value(label)
 
     def __add__(self, other):
         global VALS
         VALS += 1
         label = f"v{VALS}"
-        CODE.append(f"   {label} = builder.fadd({self.label},{other.label})")
+        label = builder.fadd(self.label, other.label)
         return Value(label)
 
     def __radd__(self, other):
@@ -76,7 +69,11 @@ class Value:
 
 class Const(Value):
     def __init__(self, c):
-        self.label = f"ir.Constant(ir.FloatType(), {c})"
+        if c in CONSTANTS:
+            self.label = CONSTANTS[c]
+        else:
+            self.label = ir.Constant(ir.FloatType(), c)
+            CONSTANTS[c] = self.label
 
 
 class Input(Value):
@@ -85,8 +82,8 @@ class Input(Value):
         self.label = f"inp_{off}"  # for builder
 
     def query(self):
-        CODE.append(
-            f"   {self.label} = builder.load(builder.gep(inp_ptr, ir.Constant(ir.IntType(32),{self.off}))"
+        self.label = builder.load(
+            builder.gep(fargs[0], [ir.Constant(ir.IntType(32), self.off)])
         )
         return self.label
 
@@ -98,8 +95,8 @@ class Weight(Value):
         self.label = f"w{ix}_{off}"  # for builder
 
     def query(self):
-        CODE.append(
-            f"   {self.label} = builder.load(builder.gep(w{self.ix}_ptr, ir.Constant(ir.IntType(32),{self.off}))"
+        self.label = builder.load(
+            builder.gep(fargs[self.ix], [ir.Constant(ir.IntType(32), self.off)])
         )
         return self.label
 
@@ -120,16 +117,14 @@ class Neuron(Value):
 
     def query(self):
         if not self.label:
-            CODE.append(f"#[green] Neuron {self.name} START")
             pre = Const(0)
             for _, (inp, w) in enumerate(zip(self.inputs, self.weights)):
                 inp.query()
                 w.query()
                 pre = pre + (inp * w)
             self.label = self.op(pre)
-            CODE.append(f"#[green] Neuron {self.name} END")
         else:
-            CODE.append(f"#[green] Neuron {self.name} CACHED")
+            pprint(f"#[green] Neuron {self.name} CACHED")
         return self.label
 
     def __repr__(self):
@@ -153,6 +148,7 @@ wiring = {
     "D": ["A", "B", "C"],
     "E": ["A", 0, "C"],
 }
+neuron2idx = {neuron: i for i, neuron in enumerate(wiring.keys())}
 
 
 def build(wiring, ops):
@@ -177,11 +173,48 @@ for neuron in neurons.values():
     print(neuron)
 print("------------")
 
+
+void = ir.VoidType()
+float_ptr = ir.PointerType(ir.FloatType())
+# there must be a pointer for each neuron
+NARGS = 1 + len(wiring.keys())  # +1 for input
+fnty = ir.FunctionType(ir.FloatType(), (float_ptr for _ in range(NARGS)))
+# Create an empty module...
+module = ir.Module(name=__file__)
+# and declare a function named "fpadd" inside it
+func = ir.Function(module, fnty, name="grapher")
+# Now implement the function
+block = func.append_basic_block(name="entry")
+builder = ir.IRBuilder(block)
+print(len(func.args))
+fargs = func.args
+
+
 retvals = []
 for output in outputs:
     if output in neurons:
         retvals.append(neurons[output].query())
-for line in CODE:
-    print(line)
 print("TO RETURN")
-print(retvals)
+builder.ret(retvals[0])
+
+print(">>> LLVM IR ================================")
+print(module)
+print("============================================\n")
+
+opt_module = llvm_manager.optimize_ir(module)
+
+print(">>> OPTIMIZED ==============================")
+print(opt_module)
+print("============================================\n")
+
+comp_mod = llvm_manager.compile_ir(opt_module)
+
+print(">>> ASM ====================================")
+llvm_manager.show_asm(comp_mod)
+print("============================================\n")
+
+weights = [np.random.rand(len(edges)) for edges in wiring.values()]
+
+# prepare arrays to pass them as pointers
+# print([w.ctypes.data_as(c_float_p) for w in weights])
+# args = []
