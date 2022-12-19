@@ -1,11 +1,15 @@
 import math
-import numpy as np
-from random import random
+
+# import numpy as np
+# from random import random
 from rich import print
+from llvm import LLVM
 
 VALS = -1  # Values counter
 ACTS = -1  # Values counter
 NEUS = -1  # Neurons counter
+
+CODE = []
 
 
 class Op:
@@ -18,12 +22,14 @@ class ReLU(Op):
         global ACTS
         ACTS += 1
         label = f"a{ACTS}"
-        print(f"[red]# {self.__repr__()}")
-        print(
+        CODE.append(f"# [red]{self.__repr__()}")
+        CODE.append(
             f"   cmp = builder.fcmp_ordered('<=', ir.Constant(ir.FloatType(), 0), {pre}, flags=('fast',))"
         )
-        print(f"   {label} = builder.select(cmp, x, ir.Constant(ir.FloatType(), 0))")
-        print("---")
+        CODE.append(
+            f"   {label} = builder.select(cmp, x, ir.Constant(ir.FloatType(), 0))"
+        )
+        CODE.append("# [red]---")
         return Value(label)
 
 
@@ -51,14 +57,14 @@ class Value:
         global VALS
         VALS += 1
         label = f"v{VALS}"
-        print(f"   {label} = builder.fmul({self.label},{other.label})")
+        CODE.append(f"   {label} = builder.fmul({self.label},{other.label})")
         return Value(label)
 
     def __add__(self, other):
         global VALS
         VALS += 1
         label = f"v{VALS}"
-        print(f"   {label} = builder.fadd({self.label},{other.label})")
+        CODE.append(f"   {label} = builder.fadd({self.label},{other.label})")
         return Value(label)
 
     def __radd__(self, other):
@@ -77,10 +83,9 @@ class Input(Value):
     def __init__(self, off=0):
         self.off = off
         self.label = f"inp_{off}"  # for builder
-        self.name = f"I{off}"  # for human
 
     def query(self):
-        print(
+        CODE.append(
             f"   {self.label} = builder.load(builder.gep(inp_ptr, ir.Constant(ir.IntType(32),{self.off}))"
         )
         return self.label
@@ -91,16 +96,12 @@ class Weight(Value):
         self.ix = ix
         self.off = off
         self.label = f"w{ix}_{off}"  # for builder
-        self.label = f"w{ix}_{off}"  # for human
 
     def query(self):
-        print(
+        CODE.append(
             f"   {self.label} = builder.load(builder.gep(w{self.ix}_ptr, ir.Constant(ir.IntType(32),{self.off}))"
         )
         return self.label
-
-
-NEUS = -1
 
 
 class Neuron(Value):
@@ -119,20 +120,20 @@ class Neuron(Value):
 
     def query(self):
         if not self.label:
-            print(f"[green]# Neuron {self.name} START")
+            CODE.append(f"#[green] Neuron {self.name} START")
             pre = Const(0)
             for _, (inp, w) in enumerate(zip(self.inputs, self.weights)):
                 inp.query()
                 w.query()
                 pre = pre + (inp * w)
             self.label = self.op(pre)
-            print(f"[green]# Neuron {self.name} END")
+            CODE.append(f"#[green] Neuron {self.name} END")
         else:
-            print(f"[green]# Neuron {self.name} CACHED")
+            CODE.append(f"#[green] Neuron {self.name} CACHED")
         return self.label
 
     def __repr__(self):
-        return f"{self.name} : {self.op}({[el.name for el in self.inputs]})"
+        return f"{self.name} : {self.op}({[el.label for el in self.inputs]})"
 
 
 # print(D.query())
@@ -144,27 +145,14 @@ ops = {
     "D": ReLU(),
     "E": ReLU(),
 }
-# outputs = ["D", "E"]
-# wiring = {
-#     "A": [0, 2],
-#     "B": [1, 2],
-#     "C": [1, "B"],
-#     "D": ["A", "B", "C"],
-#     "E": ["A", 0, "C"],
-# }
-
-inputs = np.array([1, -1, 2])
-outputs = ["B", "C"]
+outputs = ["D", "E"]
 wiring = {
-    "A": [0, 1],
-    "B": ["A", 2],
+    "A": [0, 2],
+    "B": [1, 2],
     "C": [1, "B"],
+    "D": ["A", "B", "C"],
+    "E": ["A", 0, "C"],
 }
-weights = {
-    node: [random() * 2 - 1 for _ in range(len(wiring[node]))] for node in wiring.keys()
-}
-print(wiring)
-print(weights)
 
 
 def build(wiring, ops):
@@ -180,6 +168,8 @@ def build(wiring, ops):
     return neurons
 
 
+llvm_manager = LLVM()
+
 neurons = build(wiring, ops)
 
 for neuron in neurons.values():
@@ -191,5 +181,7 @@ retvals = []
 for output in outputs:
     if output in neurons:
         retvals.append(neurons[output].query())
+for line in CODE:
+    print(line)
 print("TO RETURN")
 print(retvals)
