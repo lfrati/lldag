@@ -2,27 +2,23 @@ import numpy as np
 import numba
 
 
-@numba.njit("f8(f8[:],f8[:])")
+@numba.njit("f4(f4[:],f4[:])")
 def dummy(inputs, weights):
     s = 0
     s += inputs[0] * weights[0]
     s += inputs[1] * weights[1]
     s += inputs[2] * weights[2]
-    # v = max(0, s)
-    v = np.sin(s)
-    return v
+    return s
 
 
-xs = np.random.rand(3)
-ws = np.random.rand(3)
-
+xs = np.random.rand(3).astype(np.float32)
+ws = np.random.rand(3).astype(np.float32)
 
 dummy(xs, ws)
 
 # for v in dir(dummy):
 #     print(f"{v}: {getattr(dummy, v)}")
 #     print("---------------")
-
 
 # inspect_asm
 # inspect_cfg
@@ -43,8 +39,12 @@ dummy(xs, ws)
 # _cache_misses
 
 # dummy.get_annotation_info()
-# dummy.inspect_llvm().keys()
-# for v in dummy.inspect_cfg().values():
+print("LLVM ===================================")
 for v in dummy.inspect_llvm().values():
-    # for v in dummy.inspect_asm().values():
     print(v)
+print("========================================")
+
+print("ASM ====================================")
+for v in dummy.inspect_asm().values():
+    print(v)
+print("========================================")
