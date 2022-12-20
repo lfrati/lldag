@@ -28,7 +28,6 @@ class Value:
         self.grad = 0
         self._prev = set(_children)
         self._op = _op
-        self._backward = lambda: None
         self.name = f"V({self._op})"
 
     def query(self):
@@ -37,24 +36,11 @@ class Value:
     def __mul__(self, other):
         data = builder.fmul(self.data, other.data)
         out = Value(data, _children=(self, other), _op="*")
-
-        def _backward():
-            self.grad += other.data * out.grad
-            other.grad += self.data * out.grad
-
-        out._backward = _backward
-
         return out
 
     def __add__(self, other):
         data = builder.fadd(self.data, other.data)
         out = Value(data, _children=(self, other), _op="+")
-
-        def _backward():
-            self.grad += out.grad
-            other.grad += out.grad
-
-        out._backward = _backward
         return out
 
     def relu(self):

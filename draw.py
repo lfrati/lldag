@@ -15,6 +15,15 @@ def trace(root):
     return nodes, edges
 
 
+from collections import defaultdict
+
+COLORS = defaultdict(lambda: "white")
+COLORS["Input"] = "#80ff8080"
+# COLORS["Value"] = "#EB867F80"
+COLORS["Weight"] = "#FFFF8080"
+COLORS["Const"] = "#C27EED80"
+
+
 def draw_dot(root, format="svg", rankdir="TB"):
     """
     format: png | svg | ...
@@ -22,18 +31,21 @@ def draw_dot(root, format="svg", rankdir="TB"):
     """
     assert rankdir in ["LR", "TB"]
     nodes, edges = trace(root)
-    dot = Digraph(
-        format=format, graph_attr={"rankdir": rankdir}
-    )  # , node_attr={'rankdir': 'TB'})
+    dot = Digraph(format=format, graph_attr={"rankdir": rankdir})
 
     for n in nodes:
         dot.node(
             name=str(id(n)),
-            label="{ %s | grad %.4f }" % (n.name, n.grad),
+            label="{ %s }" % (n.name),
             shape="record",
+            style="filled",
+            fillcolor=COLORS[n.__class__.__name__],
         )
         if n._op:
-            dot.node(name=str(id(n)) + n._op, label=n._op)
+            dot.node(
+                name=str(id(n)) + n._op,
+                label=n._op,
+            )
             dot.edge(str(id(n)) + n._op, str(id(n)))
 
     for n1, n2 in edges:
