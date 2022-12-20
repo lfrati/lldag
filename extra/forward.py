@@ -1,45 +1,4 @@
-import math
-from random import random
 from time import monotonic
-
-
-class Input:
-    def __init__(self, value, label=None):
-        self.const = value
-        self.label = label
-        self.value = None
-
-    def query(self):
-        if not self.value:
-            self.value = self.const
-
-    def __repr__(self):
-        return f"Input : {self.value}"
-
-
-class Node:
-    def __init__(self, op, inputs, label=None):
-        self.op = op
-        self.inputs = inputs
-        self.value = None
-        self.weights = [random() * 2 - 1 for _ in range(len(inputs))]
-        self.label = label
-
-    def hash(self):
-        return self.label if self.label else self.__hash__()
-
-    def query(self):
-        if not self.value:
-            for input in self.inputs:
-                input.query()
-
-            values = [w * input.value for w, input in zip(self.weights, self.inputs)]
-            pre = sum(values)
-            self.value = self.op(pre)
-        return self.value
-
-    def __repr__(self):
-        return f"{self.hash()} : {self.op}({[self.inputs]})\n"
 
 
 def relu(x):
