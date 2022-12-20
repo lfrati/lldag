@@ -45,14 +45,19 @@ class LLVM:
         module.data_layout = self.engine.target_data
         llvm_ir = str(module)
         mod = llvm.parse_assembly(llvm_ir)
-        self.pass_module.run(mod)
-        return str(mod)
+        optimized = self.pass_module.run(mod)
+        if optimized:
+            print("CODE OPTIMIZED")
+        else:
+            print("CODE UNCHANGED")
+        return mod
 
-    def compile_ir(self, llvm_ir):
+    def compile_ir(self, module):
         """
         Compile the LLVM IR string with the given engine.
         The compiled module object is returned.
         """
+        llvm_ir = str(module)
         # Create a LLVM module object from the IR
         mod = llvm.parse_assembly(llvm_ir)
         mod.verify()
