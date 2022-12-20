@@ -1,5 +1,10 @@
-import numpy as np
+import os
+
 import numba
+import numpy as np
+
+# NUMBA_DUMP_OPTIMIZED=1 python extra/array_numba.py
+os.environ["NUMBA_DUMP_OPTIMIZED"] = "1"
 
 
 @numba.njit("f4(f4[:],f4[:])")
@@ -14,7 +19,7 @@ def dummy(inputs, weights):
 xs = np.random.rand(3).astype(np.float32)
 ws = np.random.rand(3).astype(np.float32)
 
-dummy(xs, ws)
+print(dummy(xs, ws))
 
 # for v in dir(dummy):
 #     print(f"{v}: {getattr(dummy, v)}")
@@ -39,12 +44,12 @@ dummy(xs, ws)
 # _cache_misses
 
 # dummy.get_annotation_info()
-print("LLVM ===================================")
-for v in dummy.inspect_llvm().values():
-    print(v)
-print("========================================")
-
-print("ASM ====================================")
-for v in dummy.inspect_asm().values():
-    print(v)
-print("========================================")
+# print("LLVM ===================================")
+# for v in dummy.inspect_llvm().values():
+#     print(v)
+# print("========================================")
+#
+# print("ASM ====================================")
+# for v in dummy.inspect_asm().values():
+#     print(v)
+# print("========================================")

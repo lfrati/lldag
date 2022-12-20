@@ -25,7 +25,7 @@ def index(i):
 class Value:
     def __init__(self, data=None, _children=(), _op=""):
         self.data = data
-        self.grad = 0
+        self._grad = None
         self._prev = set(_children)
         self._op = _op
         self._backward = lambda: None
@@ -39,6 +39,8 @@ class Value:
         out = Value(data, _children=(self, other), _op="*")
 
         def _backward():
+            # builder.
+            print(f"grad {self.grad} x {other.grad}")
             self.grad += other.data * out.grad
             other.grad += self.data * out.grad
 
@@ -51,6 +53,7 @@ class Value:
         out = Value(data, _children=(self, other), _op="+")
 
         def _backward():
+            print(f"grad {self.grad} + {other.grad} : {out.grad}")
             self.grad += out.grad
             other.grad += out.grad
 
@@ -67,6 +70,36 @@ class Value:
 
     def __rmul__(self, other):
         return self.__mul__(other)
+
+    @property
+    def grad(self):
+        if not self._grad:
+            self._grad = Const(0)
+        return self._grad
+
+    @grad.setter
+    def grad(self, grad):
+        self._grad = grad
+
+    def backward(self):
+
+        # topological order all of the children in the graph
+        topo = []
+        visited = set()
+
+        def build_topo(v):
+            if v not in visited:
+                visited.add(v)
+                for child in v._prev:
+                    build_topo(child)
+                topo.append(v)
+
+        build_topo(self)
+
+        # go one variable at a time and apply the chain rule to get its gradient
+        self.grad = Const(1)
+        for v in reversed(topo):
+            v._backward()
 
     def __repr__(self):
         return f"{self.__class__.__name__}:{self.data.__class__.__name__}"
@@ -97,11 +130,28 @@ class Input(Value):
 
 
 class Weight(Value):
-    def __init__(self, ix=0, off=0):
+    def __init__(self, ix, off, st):
         super().__init__()
-        self.ix = ix
-        self.off = off
+        self.ix = ix  # index into fargs of the read pointer
+        self.off = off  # offset into the memory pointed by pointers
+        self.st = st  # index into fargs of the write pointer [ix + #neurons]
+        self._grad = None
         self.name = f"w{ix}_{off}"
+        self.gptr = None
+
+    @property
+    def grad(self):
+        print("read")
+        if not self.gptr:
+            self.gptr = builder.gep(fargs[self.st], [index(self.off)], inbounds=True)
+        accum = builder.load(self.gptr)
+        return Value(accum)
+
+    @grad.setter
+    def store(self, value):
+        print("stored")
+        self._grad = value
+        builder.store(value, self.gptr)
 
     def query(self):
         self.data = builder.load(
@@ -124,7 +174,6 @@ class Neuron(Value):
             for _, (inp, w) in enumerate(zip(self.inputs, self.weights)):
                 inp.query()
                 w.query()
-                print(inp, w)
                 pre = pre + (inp * w)
             value = pre.relu()
             self.data = value.data
@@ -187,7 +236,9 @@ if __name__ == "__main__":
                     neuron.inputs.append(Input(off=edge))
                 else:
                     neuron.inputs.append(neurons[edge])
-                neuron.weights.append(Weight(ix=neuron.ix, off=i))
+                neuron.weights.append(
+                    Weight(ix=neuron.ix, off=i, st=neuron.ix + len(neurons))
+                )
         return neurons
 
     llvm_manager = LLVM()
@@ -196,7 +247,7 @@ if __name__ == "__main__":
 
     float_ptr = ir.PointerType(ir.FloatType())
     # there must be a pointer for each neuron
-    NARGS = 2 + len(wiring.keys())  # +1 for input +1 for outputs
+    NARGS = 2 + 2 * len(wiring.keys())  # +1 for input +1 for outputs x2 to get grads
     fnty = ir.FunctionType(ir.IntType(32), (float_ptr for _ in range(NARGS)))
 
     module = ir.Module(name=__file__)
@@ -234,7 +285,11 @@ if __name__ == "__main__":
         [inputs]
         + [
             np.random.rand(len(edges)).astype(dtype=np.float32)
-            for edges in wiring.values()
+            for edges in wiring.values()  # weights
+        ]
+        + [
+            np.random.rand(len(edges)).astype(dtype=np.float32)
+            for edges in wiring.values()  # grads
         ]
         + [results]
     )
@@ -254,6 +309,8 @@ if __name__ == "__main__":
     assert ret == 0
     print(f"{end - start:.9f}")
     print(results)
+
+    retvals[0].backward()
 
     if DRAW:
         print("drawing")
