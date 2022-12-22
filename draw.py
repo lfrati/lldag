@@ -4,14 +4,14 @@ from graphviz import Digraph, Source
 def trace(root):
     nodes, edges = set(), set()
 
-    def build(v):
+    def _trace(v):
         if v not in nodes:
             nodes.add(v)
             for child in v._prev:
                 edges.add((child, v))
-                build(child)
+                _trace(child)
 
-    build(root)
+    _trace(root)
     return nodes, edges
 
 
