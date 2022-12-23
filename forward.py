@@ -4,14 +4,14 @@ from time import monotonic
 from types import SimpleNamespace
 
 from llvmlite import ir
-import numpy as np
 from rich import print as pprint
 
 from draw import draw_dot
 from llvm import LLVM
 
 DRAW = int(os.getenv("DRAW", "0"))
-DEBUG = bool(int(os.getenv("DEBUG", "0")))
+DEBUG = int(os.getenv("DEBUG", "0"))
+FMA = int(os.getenv("FMA", "0"))
 CONSTANTS = {}
 
 c_float_p = POINTER(c_float)
@@ -25,10 +25,9 @@ def index(i):
 
 
 class Value:
-    def __init__(self, binfo, data=None, _children=(), _op=""):
+    def __init__(self, binfo, data=None, _op=""):
         self.data = data
         self.grad = 0
-        self._prev = set(_children)
         self._op = _op
         self.name = f"V({self._op})"
         self.binfo = binfo
@@ -38,18 +37,23 @@ class Value:
 
     def __mul__(self, other):
         data = self.binfo.builder.fmul(self.data, other.data)
-        out = Value(binfo=self.binfo, data=data, _children=(self, other), _op="*")
+        out = Value(binfo=self.binfo, data=data, _op="*")
         return out
 
     def __add__(self, other):
         data = self.binfo.builder.fadd(self.data, other.data)
-        out = Value(binfo=self.binfo, data=data, _children=(self, other), _op="+")
+        out = Value(binfo=self.binfo, data=data, _op="+")
+        return out
+
+    def fma(self, other, other2):
+        data = self.binfo.builder.fma(self.data, other.data, other2.data)
+        out = Value(binfo=self.binfo, data=data, _op="fma")
         return out
 
     def relu(self):
         cmp = self.binfo.builder.fcmp_ordered("<=", zerof, self.data, flags=("fast",))
         data = self.binfo.builder.select(cmp, self.data, zerof)
-        return Value(binfo=self.binfo, data=data, _children=(self,), _op="ReLU")
+        return Value(binfo=self.binfo, data=data, _op="ReLU")
 
     def __radd__(self, other):
         return self.__add__(other)
@@ -114,7 +118,10 @@ class Neuron(Value):
             for _, (inp, w) in enumerate(zip(self.inputs, self.weights)):
                 inp.query()
                 w.query()
-                pre = pre + (inp * w)
+                if FMA:
+                    pre = inp.fma(w, pre)
+                else:
+                    pre = pre + (inp * w)
             value = pre.relu()
             self.data = value.data
             self.value = value
@@ -211,6 +218,7 @@ def build(wiring, fname):
 
 
 if __name__ == "__main__":
+    import numpy as np
 
     np.random.seed(4)
 
@@ -283,5 +291,5 @@ if __name__ == "__main__":
     ret = cfunc(*args)
     end = monotonic()
     assert ret == 0
-    print(f"{end - start:.9f}")
+    pprint(f"Elapsed {end - start:.9f}")
     print(results)
