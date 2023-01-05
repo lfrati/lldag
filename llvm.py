@@ -7,6 +7,8 @@ class LLVM:
         llvm.initialize()
         llvm.initialize_native_target()
         llvm.initialize_native_asmprinter()  # yes, even this one
+ 
+        llvm.set_option('', '--debug-only=loop-vectorize')
 
         # Create a target machine representing the host
         """
@@ -15,8 +17,10 @@ class LLVM:
         modules.
         """
         self.target = llvm.Target.from_triple(llvm.get_process_triple())
-        self.target_machine = self.target.create_target_machine()
+        # self.target_machine = self.target.create_target_machine()
+        self.target_machine = self.target.create_target_machine(opt=2)
         self.target_machine.set_asm_verbosity(True)
+
         # And an execution engine with an empty backing module
         backing_mod = llvm.parse_assembly("")
         self.engine = llvm.create_mcjit_compiler(backing_mod, self.target_machine)
