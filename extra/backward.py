@@ -1,5 +1,4 @@
 import os
-import random
 from time import monotonic
 from typing import Union
 
@@ -8,7 +7,8 @@ from rich import print as pprint
 
 from draw import draw_micro
 
-DEBUG = int(os.getenv("DEBUG", "1"))
+DEBUG = int(os.getenv("DEBUG", "0"))
+SEED = int(os.getenv("SEED", "4"))
 
 
 class Value:
@@ -154,7 +154,8 @@ class Neuron:
     def __init__(self, name, inputs_refs):
         self.inputs_refs = inputs_refs
         self.w = [
-            Value(random.uniform(-1, 1), name="W") for _ in range(len(self.inputs_refs))
+            Value(np.random.random() * 2 - 1, name="W")
+            for _ in range(len(self.inputs_refs))
         ]
         self.b = Value(0, name="B")
         self.name = name
@@ -239,9 +240,7 @@ class SLP:
 #%%
 
 
-# seed = 5
-# np.random.seed(seed)
-# random.seed(seed)
+np.random.seed(SEED)
 
 inputs = np.random.rand(4).astype(np.float32)
 outputs = ["B", "C"]
@@ -252,7 +251,7 @@ net = SLP(wiring=wiring, nin=len(inputs))
 pprint(net)
 st = monotonic()
 out = net(inputs, outputs)
-loss1 = 0.5 * sum([(1 - o)**2 for o in out])
+loss1 = 0.5 * sum([(1 - o) ** 2 for o in out])
 et = monotonic()
 
 pprint(f"[red]Elapsed {et - st: .7f}")
@@ -273,7 +272,7 @@ for p in net.parameters():
 
 net.zero_grad()
 out = net(inputs, outputs)
-loss2 = 0.5 * sum([(1 - o)**2 for o in out])
+loss2 = 0.5 * sum([(1 - o) ** 2 for o in out])
 print("Loss", loss2.data)
 
 assert loss2.data <= loss1.data, f"Loss has increased! {loss1.data} > {loss2.data}"
