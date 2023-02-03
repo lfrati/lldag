@@ -23,7 +23,9 @@ def f32(i):
     return ir.Constant(ir.FloatType(), i)
 
 
-def neuron(builder, inputs, weights, n, outputs, i, prev, curr_body, curr_exit, next):
+def neuron(
+    builder, inputs, weights, n, outputs, i, prev, curr_body, curr_exit, next, module
+):
 
     builder.position_at_end(curr_body)
 
@@ -52,7 +54,11 @@ def neuron(builder, inputs, weights, n, outputs, i, prev, curr_body, curr_exit, 
     index.add_incoming(indexp1, curr_body)  # increment by one if coming from bb_loop
 
     cond = builder.icmp_unsigned("<", indexp1, n)
-    builder.cbranch(cond, curr_body, curr_exit)
+    loop = builder.cbranch(cond, curr_body, curr_exit)
+    # from https://github.com/numba/llvmlite/issues/270#issuecomment-304376876
+    # https://llvm.org/docs/LangRef.html#llvm-loop
+    # or "llvm.loop.unroll.enable"
+    loop.set_metadata("llvm.loop", module.add_metadata(["llvm.loop.vectorize.enable"]))
 
     builder.position_at_end(curr_exit)
     outputs = builder.insert_element(outputs, added, i32(i))
@@ -96,7 +102,9 @@ def make_multi_loop():
         curr_exit = bb_exits[i]
         next = bb_loops[i + 1] if i < len(bb_loops) - 1 else bb_exit
 
-        vec = neuron(builder, xs, ws, n, vec, i, prev, curr_body, curr_exit, next)
+        vec = neuron(
+            builder, xs, ws, n, vec, i, prev, curr_body, curr_exit, next, module
+        )
 
     builder.position_at_end(bb_exit)
     val = reduce_sum(builder, vec, NLOOPS)
