@@ -21,24 +21,29 @@ def make_dag(
     min_edges: int = 3,
     max_edges: int = 6,
     seed: int = 1337,
-) -> dict[str, list[str]]:
+) -> tuple[dict[str, list[str]], dict[str, np.ndarray]]:
     np.random.seed(seed)
     pool = [str(i) for i in range(n_inputs)]
     wiring = {}
     for node in make_names(n_nodes):
-        edges = np.random.randint(min_edges, max_edges)
-        wiring[node] = np.random.choice(pool, size=(edges), replace=False).tolist()
+        n_edges = np.random.randint(min_edges, max_edges)
+        edges = np.random.choice(pool, size=n_edges, replace=False).tolist()
+        wiring[node] = [int(e) if e.isdigit() else e for e in edges]
         pool.append(node)
-
-    return wiring
+    weights = {
+        out: np.random.uniform(-1, 1, size=(len(ins))) for out, ins in wiring.items()
+    }
+    return wiring, weights
 
 
 def main():
-    wiring = make_dag(n_nodes=32, n_inputs=16, min_edges=4, max_edges=5)
-    print("{")
+    wiring, weights = make_dag(n_nodes=32, n_inputs=16, min_edges=4, max_edges=5)
     for neuron, edges in wiring.items():
-        print(f'"{neuron}": { [int(e) if e.isdigit() else e for e in edges]},')
-    print("}")
+        ws = weights[neuron]
+        print(ws.sum())
+        assert len(ws) == len(edges)
+        weight_info = f"[{ws.min():+.3f}, {ws.max():+.3f}]"
+        print(f'"{neuron}": {weight_info} | { [f"{e:>2}" for e in edges]}')
 
 
 if __name__ == "__main__":
