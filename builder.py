@@ -36,14 +36,17 @@ def make_dag(
     return wiring, weights
 
 
-def main():
-    wiring, weights = make_dag(n_nodes=32, n_inputs=16, min_edges=4, max_edges=5)
+def show(wiring, weights):
     for neuron, edges in wiring.items():
         ws = weights[neuron]
-        print(ws.sum())
         assert len(ws) == len(edges)
         weight_info = f"[{ws.min():+.3f}, {ws.max():+.3f}]"
         print(f'"{neuron}": {weight_info} | { [f"{e:>2}" for e in edges]}')
+
+
+def main():
+    wiring, weights = make_dag(n_nodes=32, n_inputs=16, min_edges=4, max_edges=5)
+    show(wiring, weights)
 
 
 if __name__ == "__main__":
