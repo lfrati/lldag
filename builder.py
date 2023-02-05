@@ -1,14 +1,17 @@
-import numpy as np
-from string import ascii_uppercase
 from itertools import product
+import math
+from string import ascii_uppercase
 from typing import Iterator
+
+import numpy as np
 
 
 def make_names(N: int) -> Iterator[str]:
     """
     Generate N unique strings, lexicographically ordered
     """
-    l = N // len(ascii_uppercase) + 1
+    l = math.ceil(math.log(N, len(ascii_uppercase)))
+
     for i, line in enumerate(product(ascii_uppercase, repeat=l)):
         if i >= N:
             return
@@ -21,7 +24,7 @@ def make_dag(
     min_edges: int = 3,
     max_edges: int = 6,
     seed: int = 1337,
-) -> tuple[dict[str, list[str]], dict[str, np.ndarray]]:
+) -> dict[str, list[str]]:
     np.random.seed(seed)
     pool = [str(i) for i in range(n_inputs)]
     wiring = {}
@@ -30,10 +33,7 @@ def make_dag(
         edges = np.random.choice(pool, size=n_edges, replace=False).tolist()
         wiring[node] = [int(e) if e.isdigit() else e for e in edges]
         pool.append(node)
-    weights = {
-        out: np.random.uniform(-1, 1, size=(len(ins))) for out, ins in wiring.items()
-    }
-    return wiring, weights
+    return wiring
 
 
 def show(wiring, weights):
