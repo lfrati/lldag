@@ -95,22 +95,30 @@ wiring = make_dag(
 outputs = list(wiring.keys())[-NOUTS:]
 output2ix = {node: i for i, node in enumerate(outputs)}
 et = monotonic()
-print(f"DAG preparation took: {et - st:.5f}seconds")
+print(f"  DAG PREPARATION TOOK: {et - st:.8f} s")
 
-show(wiring)
+if DEBUG >= 1:
+    show(wiring)
+
+all_weights = [
+    generator.normal(size=(len(wiring[node]))).astype(np.float32) * 0.1
+    for node in wiring
+]
 
 st = monotonic()
 subset, leaves, nodes = extract_subset(outputs, wiring)
 et = monotonic()
-print(f"subset extraction took: {et - st:.5f}seconds")
-show(subset)
+print(f"SUBSET EXTRACTION TOOK: {et - st:.8f} s")
+if DEBUG >= 1:
+    show(subset)
 
 ts = TopologicalSorter(subset)
 topo = list(ts.static_order())
 
-print(f"{outputs=}")
-print(f" inputs={leaves}")
-print()
+if DEBUG >= 1:
+    print(f"{outputs=}")
+    print(f" inputs={leaves}")
+    print()
 
 
 def op(x):
@@ -181,20 +189,24 @@ builder.ret_void()
 st = monotonic()
 llvm_manager = LLVM()
 
-print(">>> LLVM IR ================================")
-print(mod)
-print("============================================\n")
+if DEBUG >= 1:
+    print(">>> LLVM IR ================================")
+    print(mod)
+    print("============================================\n")
 
 mod = llvm_manager.optimize_ir(mod)
-print(">>> OPTIMIZED ==============================")
-print(mod)
-print("============================================\n")
+
+if DEBUG >= 2:
+    print(">>> OPTIMIZED ==============================")
+    print(mod)
+    print("============================================\n")
 
 mod = llvm_manager.compile_ir(mod)
 
-# print(">>> ASM ====================================")
-# llvm_manager.show_asm(mod)
-# print("============================================\n")
+if DEBUG >= 3:
+    print(">>> ASM ====================================")
+    llvm_manager.show_asm(mod)
+    print("============================================\n")
 
 # Look up the function pointer (a Python int)
 func_ptr = llvm_manager.get_fptr("node")
@@ -207,12 +219,11 @@ def to_ndptr(arr):
 arr_ptrs = [to_ndptr(inputs)] + [to_ndptr(w) for w in weights] + [to_ndptr(results)]
 cfunc = CFUNCTYPE(c_int, *arr_ptrs)(func_ptr)
 
-print("Running...")
 st = monotonic()
 cfunc(inputs, *weights, results)
 et = monotonic()
 elapsed = et - st
-print(f" RUN: {elapsed: .8f}s")
+print(f"              RUN TOOK: {elapsed:.8f} s")
 
 tot_edges = sum([weight.size for weight in weights])
 print(f"TOT EDGES: {tot_edges} ({tot_edges/elapsed/1e6:.2f}M edges/second)")
