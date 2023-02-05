@@ -16,25 +16,33 @@ from llvm import LLVM
 DEBUG = int(os.getenv("DEBUG", "0"))
 SEED = int(os.getenv("SEED", "4"))
 
+# DEBUG = 1
 
-def check_ready(subset, slots):
+
+def check_ready(subset, outputs):
+
+    ts = TopologicalSorter(subset)
+    topo = list(ts.static_order())
+
     computed = set()
 
     requestors = defaultdict(list)
-    for node in nodes:
+    for node in subset:
         for pred in subset[node]:
-            requestors[pred].append(node + str(slots[node][pred][1]))
+            requestors[pred].append(node)
 
     def ready(node, subset):
         return all(type(pred) == int or pred in computed for pred in subset[node])
 
     print("                      INCOMING  NODE  OUTGOING")
-    for node in nodes:
-        pprint(
-            f"[green]{str(subset[node]):>30}   [violet]{node}   [red]{requestors[node]}"
-        )
-        assert ready(node, subset)
-        computed.add(node)
+    for node in topo:
+        if type(node) == str:
+            out = "[yellow]OUT" if node in outputs else ""
+            pprint(
+                f"[green]{str(subset[node]):>30}   [violet]{node}   [red]{requestors[node]} {out}"
+            )
+            assert ready(node, subset)
+            computed.add(node)
 
 
 def show(wiring):
@@ -74,14 +82,14 @@ def extract_subset(outputs, wiring):
     for node in outputs:
         trace(node)
     subset = {node: wiring[node] for node in seen}
-    return subset, sorted(list(inputs)), sorted(list(seen))
+    return subset
 
 
-NNODES = 16
-NINPS = 8
+NNODES = 256
+NINPS = 32
 NOUTS = 8
-MINED = 4
-MAXED = 6
+MINED = 8
+MAXED = 16
 
 st = monotonic()
 generator = np.random.default_rng(SEED)
@@ -93,32 +101,27 @@ wiring = make_dag(
     seed=SEED,
 )
 outputs = list(wiring.keys())[-NOUTS:]
-output2ix = {node: i for i, node in enumerate(outputs)}
 et = monotonic()
 print(f"  DAG PREPARATION TOOK: {et - st:.8f} s")
 
 if DEBUG >= 1:
     show(wiring)
 
-all_weights = [
-    generator.normal(size=(len(wiring[node]))).astype(np.float32) * 0.1
+all_weights = {
+    node: generator.normal(size=(len(wiring[node]))).astype(np.float32) * 0.1
     for node in wiring
-]
+}
 
 st = monotonic()
-subset, leaves, nodes = extract_subset(outputs, wiring)
+subset = extract_subset(outputs, wiring)
 et = monotonic()
 print(f"SUBSET EXTRACTION TOOK: {et - st:.8f} s")
 if DEBUG >= 1:
     show(subset)
+    check_ready(subset, outputs)
 
 ts = TopologicalSorter(subset)
 topo = list(ts.static_order())
-
-if DEBUG >= 1:
-    print(f"{outputs=}")
-    print(f" inputs={leaves}")
-    print()
 
 
 def op(x):
@@ -129,10 +132,7 @@ sensors = [el for el in topo if type(el) == int]
 neurons = [el for el in topo if type(el) == str]
 
 inputs = generator.random(NINPS).astype(np.float32)
-weights = [
-    generator.normal(size=(len(wiring[neuron]))).astype(np.float32) * 0.1
-    for neuron in neurons
-]
+weights = [all_weights[neuron] for neuron in neurons]
 results = np.zeros(shape=len(outputs), dtype=np.float32)
 
 float_ptr = ir.PointerType(ir.FloatType())
@@ -153,8 +153,6 @@ ll_cache = {}
 for sensor in sensors:
     py_cache[sensor] = inputs[sensor]
     ll_cache[sensor] = builder.load(builder.gep(inputs_ptr, [i32(sensor)]))
-
-assert len(neurons) == len(weights)
 
 for i, neuron in enumerate(neurons):
     py_incoming = [py_cache[val] for val in wiring[neuron]]
@@ -187,23 +185,24 @@ for i, out in enumerate(outputs):
 builder.ret_void()
 
 st = monotonic()
+st = monotonic()
 llvm_manager = LLVM()
 
-if DEBUG >= 1:
+if DEBUG >= 2:
     print(">>> LLVM IR ================================")
     print(mod)
     print("============================================\n")
 
 mod = llvm_manager.optimize_ir(mod)
 
-if DEBUG >= 2:
+if DEBUG >= 3:
     print(">>> OPTIMIZED ==============================")
     print(mod)
     print("============================================\n")
 
 mod = llvm_manager.compile_ir(mod)
 
-if DEBUG >= 3:
+if DEBUG >= 4:
     print(">>> ASM ====================================")
     llvm_manager.show_asm(mod)
     print("============================================\n")
@@ -218,6 +217,8 @@ def to_ndptr(arr):
 
 arr_ptrs = [to_ndptr(inputs)] + [to_ndptr(w) for w in weights] + [to_ndptr(results)]
 cfunc = CFUNCTYPE(c_int, *arr_ptrs)(func_ptr)
+et = monotonic()
+print(f"      COMPILATION TOOK: {et - st:.8f} s")
 
 st = monotonic()
 cfunc(inputs, *weights, results)
@@ -230,3 +231,8 @@ print(f"TOT EDGES: {tot_edges} ({tot_edges/elapsed/1e6:.2f}M edges/second)")
 
 print(" ".join([f"{val:>6.3f}" for val in results]))
 print(" ".join([f"{val:>6.3f}" for val in py_results]))
+
+assert np.allclose(
+    results, py_results
+), f"MISMATCH: {results.sum()} != {np.sum(py_results)}"
+pprint("[green]MATCH: OK")

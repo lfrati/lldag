@@ -50,10 +50,10 @@ class LLVM:
         llvm_ir = str(module)
         mod = llvm.parse_assembly(llvm_ir)
         optimized = self.pass_module.run(mod)
-        if optimized:
-            print("CODE OPTIMIZED")
-        else:
-            print("CODE UNCHANGED")
+        # if optimized:
+        #     print("CODE OPTIMIZED")
+        # else:
+        #     print("CODE UNCHANGED")
         return mod
 
     def compile_ir(self, module):
